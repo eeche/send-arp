@@ -35,3 +35,12 @@ struct Ip final {
 protected:
 	uint32_t ip_;
 };
+
+namespace std {
+    template <>
+    struct hash<Ip> {
+        std::size_t operator()(const Ip& ip) const {
+            return std::hash<uint32_t>{}(static_cast<uint32_t>(ip));  // Ip를 uint32_t로 변환하여 해시
+        }
+    };
+}

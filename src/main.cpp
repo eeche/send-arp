@@ -9,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <vector>
+#include <unordered_map>
 
 #pragma pack(push, 1)
 struct EthArpPacket final {
@@ -75,6 +76,8 @@ int send_arp(pcap_t* handle, Mac my_mac, Ip target_ip, Mac sender_mac, Ip sender
 }
 
 Mac get_sender_mac(pcap_t* handle, Mac my_mac, Ip my_ip, Ip sender_ip) {
+
+    // printf("1\n");
     EthArpPacket packet;
 
     packet.eth_.dmac_ = Mac::broadcastMac();
@@ -142,25 +145,52 @@ int main(int argc, char* argv[]) {
     }
 
     std::vector<IpPair> ip_pairs;
+    std::unordered_map<Ip, Mac> known_macs;
+
     for (int i = 2; i < argc; i += 2) {
-        ip_pairs.push_back({Ip(argv[i]), Ip(argv[i+1]), Mac::nullMac()});
+        Ip sender_ip = Ip(argv[i]);
+        Ip target_ip = Ip(argv[i+1]);
+        
+        Mac sender_mac;
+        if (known_macs.find(sender_ip) == known_macs.end()) {
+            sender_mac = get_sender_mac(handle, my_mac, my_ip, sender_ip);
+            if (sender_mac == Mac::nullMac()) {
+                fprintf(stderr, "couldn't get sender's MAC address for %s\n", std::string(sender_ip).c_str());
+                continue;
+            }
+            known_macs[sender_ip] = sender_mac;
+        } else {
+            sender_mac = known_macs[sender_ip];
+        }
+        // printf("%d %s\n",i, std::string(sender_mac).c_str());
+        // printf("%s\n",std::string(target_ip).c_str());
+        ip_pairs.push_back({sender_ip, target_ip, sender_mac});
+        send_arp(handle, my_mac, target_ip, sender_mac, sender_ip);
     }
 
     if (ip_pairs.empty()) {
-        fprintf(stderr, "No IP pairs provided. Exiting.\n");
+        fprintf(stderr, "No valid IP pairs provided. Exiting.\n");
         return -1;
     }
 
-    // Get sender MACs and send initial ARP spoofing packets
-    for (auto& pair : ip_pairs) {
-        pair.sender_mac = get_sender_mac(handle, my_mac, my_ip, pair.sender);
-        printf("%s\n",::std::string(pair.sender_mac).c_str());
-        if (pair.sender_mac == Mac::nullMac()) {
-            fprintf(stderr, "couldn't get sender's MAC address for %s\n", std::string(pair.sender).c_str());
-            continue;
-        }
-        send_arp(handle, my_mac, pair.target, pair.sender_mac, pair.sender);
-    }
+    // for (int i = 2; i < argc; i += 2) {
+    //     ip_pairs.push_back({Ip(argv[i]), Ip(argv[i+1]), Mac::nullMac()});
+    // }
+
+    // if (ip_pairs.empty()) {
+    //     fprintf(stderr, "No IP pairs provided. Exiting.\n");
+    //     return -1;
+    // }
+
+    // for (auto& pair : ip_pairs) {
+    //     pair.sender_mac = get_sender_mac(handle, my_mac, my_ip, pair.sender);
+    //     printf("%s\n",::std::string(pair.sender_mac).c_str());
+    //     if (pair.sender_mac == Mac::nullMac()) {
+    //         fprintf(stderr, "couldn't get sender's MAC address for %s\n", std::string(pair.sender).c_str());
+    //         continue;
+    //     }
+    //     send_arp(handle, my_mac, pair.target, pair.sender_mac, pair.sender);
+    // }
 
     // Ip sender_ip = Ip(argv[2]);
     // Ip target_ip = Ip(argv[3]);
